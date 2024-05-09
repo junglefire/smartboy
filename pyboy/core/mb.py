@@ -30,28 +30,22 @@ class Motherboard:
 		self.bootrom = bootrom.BootROM(bootrom_file, cgb)
 		self.ram = ram.RAM(cgb, randomize=randomize)
 		self.cpu = cpu.CPU(self)
-
 		if cgb:
 			self.lcd = lcd.CGBLCD(cgb, self.cartridge.cgb, color_palette, cgb_color_palette, randomize=randomize,)
 		else:
 			self.lcd = lcd.LCD(cgb, self.cartridge.cgb, color_palette, cgb_color_palette, randomize=randomize, )
-
 		# QUIRK: Force emulation of sound (muted)
 		sound_emulated |= self.cartridge.gamename == "ZELDA DIN"
 		self.sound = sound.Sound(sound_enabled, sound_emulated)
-
 		self.key1 = 0
 		self.double_speed = False
 		self.cgb = cgb
 		self.cartridge_cgb = self.cartridge.cgb
-
 		if self.cgb:
 			self.hdma = HDMA()
-
 		self.bootrom_enabled = True
 		self.serialbuffer = [0] * 1024
 		self.serialbuffer_count = 0
-
 		self.breakpoints_list = [] #[(0, 0x150), (0, 0x0040), (0, 0x0048), (0, 0x0050)]
 		self.breakpoint_singlestep = False
 		self.breakpoint_singlestep_latch = False
@@ -64,6 +58,7 @@ class Motherboard:
 			self.lcd.double_speed = self.double_speed
 			self.key1 ^= 0b10000001
 
+	"""
 	def breakpoint_add(self, bank, addr):
 		# Replace instruction at address with OPCODE_BRK and save original opcode
 		# for later reinsertion and when breakpoint is deleted.
@@ -166,7 +161,8 @@ class Motherboard:
 		logger.debug("Breakpoint reinjecting: %02x:%02x", bank, addr)
 		self.breakpoint_add(bank, addr)
 		self.breakpoint_waiting = -1
-
+	"""
+	
 	def getserial(self):
 		b = "".join([chr(x) for x in self.serialbuffer[:self.serialbuffer_count]])
 		self.serialbuffer_count = 0
@@ -180,67 +176,6 @@ class Motherboard:
 		self.sound.stop()
 		if save:
 			self.cartridge.stop()
-
-	def save_state(self, f):
-		logger.debug("Saving state...")
-		f.write(STATE_VERSION)
-		f.write(self.bootrom_enabled)
-		f.write(self.key1)
-		f.write(self.double_speed)
-		f.write(self.cgb)
-		if self.cgb:
-			self.hdma.save_state(f)
-		self.cpu.save_state(f)
-		self.lcd.save_state(f)
-		self.sound.save_state(f)
-		self.lcd.renderer.save_state(f)
-		self.ram.save_state(f)
-		self.timer.save_state(f)
-		self.cartridge.save_state(f)
-		self.interaction.save_state(f)
-		f.flush()
-		logger.debug("State saved.")
-
-	def load_state(self, f):
-		logger.debug("Loading state...")
-		state_version = f.read()
-		if state_version >= 2:
-			logger.debug("State version: %d", state_version)
-			# From version 2 and above, this is the version number
-			self.bootrom_enabled = f.read()
-		else:
-			logger.debug("State version: 0-1")
-			# HACK: The byte wasn't a state version, but the bootrom flag
-			self.bootrom_enabled = state_version
-		if state_version >= 8:
-			self.key1 = f.read()
-			self.double_speed = f.read()
-			_cgb = f.read()
-			if self.cgb != _cgb:
-				raise Exception("Loading state which is not CGB, but PyBoy is loaded in CGB mode!")
-			self.cgb = _cgb
-			if self.cgb:
-				self.hdma.load_state(f, state_version)
-		self.cpu.load_state(f, state_version)
-		self.lcd.load_state(f, state_version)
-		if state_version >= 8:
-			self.sound.load_state(f, state_version)
-		self.lcd.renderer.load_state(f, state_version)
-		self.lcd.renderer.clear_cache()
-		self.ram.load_state(f, state_version)
-		if state_version < 5:
-			# Interrupt register moved from RAM to CPU
-			self.cpu.interrupts_enabled_register = f.read()
-		if state_version >= 5:
-			self.timer.load_state(f, state_version)
-		self.cartridge.load_state(f, state_version)
-		self.interaction.load_state(f, state_version)
-		f.flush()
-		logger.debug("State loaded.")
-
-	###################################################################
-	# Coordinator
-	#
 
 	def processing_frame(self):
 		b = (not self.lcd.frame_done)
@@ -560,29 +495,6 @@ class HDMA:
 		self.transfer_active = False
 		self.curr_src = 0
 		self.curr_dst = 0
-
-	def save_state(self, f):
-		f.write(self.hdma1)
-		f.write(self.hdma2)
-		f.write(self.hdma3)
-		f.write(self.hdma4)
-		f.write(self.hdma5)
-		f.write(self.transfer_active)
-		f.write_16bit(self.curr_src)
-		f.write_16bit(self.curr_dst)
-
-	def load_state(self, f, state_version):
-		self.hdma1 = f.read()
-		self.hdma2 = f.read()
-		self.hdma3 = f.read()
-		self.hdma4 = f.read()
-		self.hdma5 = f.read()
-		if STATE_VERSION <= 8:
-			# NOTE: Deprecated read to self._hdma5
-			f.read()
-		self.transfer_active = f.read()
-		self.curr_src = f.read_16bit()
-		self.curr_dst = f.read_16bit()
 
 	def set_hdma5(self, value, mb):
 		if self.transfer_active:
